@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net; // 添加此命名空间以支持 IPAddress
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
