@@ -5,11 +5,10 @@ on:
     branches: [ master ]
   workflow_dispatch: # 手动触发
   schedule: # 计划任务触发
-    - cron: '0 */8 * * *' # cron表达式，Actions时区是UTC时间
+    - cron: '0 */8 * * *' # 每8小时运行一次，UTC时间
 
 jobs:
   run-get-ip-list:
-
     runs-on: ubuntu-latest
     
     steps:
@@ -25,7 +24,7 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 7.0  # 使用已发布的稳定版本
+        dotnet-version: 7.0.x  # 使用 .NET 7.0 的最新补丁版本
 
     # 设置全球化不变模式
     - name: Set globalization invariant mode
@@ -35,33 +34,36 @@ jobs:
     - name: Install dependencies
       run: dotnet restore
       
-    # 构建应用
+    # 构建应用（使用 Release 配置）
     - name: Build
       run: dotnet build --configuration Release --no-restore
        
-    # 运行应用
+    # 运行应用（指定输出目录并确保文件生成）
     - name: Run
-      run: dotnet run --project china_ip_list.csproj
+      run: |
+        dotnet run --project china_ip_list.csproj --configuration Release
+        # 检查输出文件是否存在
+        ls -la ./bin/Release/net7.0/
 
     # 提交更改到本地
     - name: Commit files
       run: |
-         git config --local user.email "mayax@github.com"
-         git config --local user.name "mayaxcn"
-         ls
-         pwd
-         git rm -f chn_ip.txt chnroute.txt chn_ip_v6.txt chnroute_v6.txt
-         git commit -m "删除旧有IP文件!"
-         cp /home/runner/work/china-ip-list/china-ip-list/bin/Debug/net7.0/chn_ip.txt chn_ip.txt
-         cp /home/runner/work/china-ip-list/china-ip-list/bin/Debug/net7.0/chnroute.txt chnroute.txt
-         cp /home/runner/work/china-ip-list/china-ip-list/bin/Debug/net7.0/chn_ip_v6.txt chn_ip_v6.txt
-         cp /home/runner/work/china-ip-list/china-ip-list/bin/Debug/net7.0/chnroute_v6.txt chnroute_v6.txt
-         git add chn_ip.txt chnroute.txt chn_ip_v6.txt chnroute_v6.txt
-         git commit -m "提交新的IP文件，更新于$(date "+%Y-%m-%d %H:%M:%S")"
+        git config --local user.email "mayax@github.com"
+        git config --local user.name "mayaxcn"
+        # 删除旧文件（如果存在）
+        git rm -f chn_ip.txt chnroute.txt chn_ip_v6.txt chnroute_v6.txt || true
+        git commit -m "删除旧有IP文件!" || true
+        # 复制新的生成文件到仓库根目录
+        cp ./bin/Release/net7.0/chn_ip.txt chn_ip.txt
+        cp ./bin/Release/net7.0/chnroute.txt chnroute.txt
+        cp ./bin/Release/net7.0/chn_ip_v6.txt chn_ip_v6.txt
+        cp ./bin/Release/net7.0/chnroute_v6.txt chnroute_v6.txt
+        git add chn_ip.txt chnroute.txt chn_ip_v6.txt chnroute_v6.txt
+        git commit -m "提交新的IP文件（筛选AS4134,AS4808,AS4837,AS9808,AS4812），更新于$(date '+%Y-%m-%d %H:%M:%S')"
          
     # 推送到远程
     - name: Push changes
       uses: ad-m/github-push-action@master
       with:
-         github_token: ${{ secrets.CHNIP_GIT_KEY }}
-         branch: master
+        github_token: ${{ secrets.CHNIP_GIT_KEY }}
+        branch: master
