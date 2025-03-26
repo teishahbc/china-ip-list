@@ -14,17 +14,13 @@ namespace china_ip_list
     class Program
     {
         public static string chn_ip = "", chnroute = "", chn_ip_v6 = "", chnroute_v6 = "";
-        // 目标 AS 号列表
         private static readonly HashSet<string> TargetASNs = new HashSet<string> { "AS4134", "AS4808", "AS4837", "AS9808", "AS4812" };
-        // IP 到 AS 的映射
         private static Dictionary<string, string> ipToAsnMap = new Dictionary<string, string>();
 
         static void Main(string[] args)
         {
-            // 加载 IP-to-ASN 映射数据
             LoadIpToAsnMap();
 
-            // 获取 APNIC 数据
             string apnic_ip = GetResponse("http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest");
             if (string.IsNullOrEmpty(apnic_ip))
             {
@@ -33,22 +29,20 @@ namespace china_ip_list
             }
 
             string[] ip_list = apnic_ip.Split(new string[] { "\n" }, StringSplitOptions.None);
-            int i = 0; // IPv4 计数
-            int i_ip6 = 0; // IPv6 计数
+            int i = 0;
+            int i_ip6 = 0;
             string save_txt_path = AppContext.BaseDirectory;
 
             foreach (string per_ip in ip_list)
             {
-                // 处理 IPv4 部分
                 if (per_ip.Contains("CN|ipv4|"))
                 {
                     string[] ip_information = per_ip.Split('|');
-                    string ip = ip_information[3]; // 起始 IP
-                    int ip_count = Convert.ToInt32(ip_information[4]); // IP 数量
-                    string ip_mask = Convert.ToString(32 - (Math.Log(ip_count) / Math.Log(2))); // 子网掩码
-                    string end_ip = IntToIp(IpToInt(ip) + (uint)ip_count - 1); // 结束 IP
+                    string ip = ip_information[3];
+                    int ip_count = Convert.ToInt32(ip_information[4]);
+                    string ip_mask = Convert.ToString(32 - (Math.Log(ip_count) / Math.Log(2)));
+                    string end_ip = IntToIp(IpToInt(ip) + (uint)ip_count - 1);
 
-                    // 检查此 IP 段是否属于目标 AS
                     if (IsIpInTargetAsn(ip))
                     {
                         chnroute += ip + "/" + ip_mask + "\n";
@@ -57,15 +51,13 @@ namespace china_ip_list
                     }
                 }
 
-                // 处理 IPv6 部分
                 if (per_ip.Contains("CN|ipv6|"))
                 {
                     string[] ip_information_v6 = per_ip.Split('|');
-                    string ip_v6 = ip_information_v6[3]; // 起始 IPv6
-                    int ip_mask_v6 = Convert.ToInt32(ip_information_v6[4]); // 子网掩码
-                    string end_ip_v6 = CalculateEndIPv6Address(ip_v6, ip_mask_v6); // 结束 IPv6
+                    string ip_v6 = ip_information_v6[3];
+                    int ip_mask_v6 = Convert.ToInt32(ip_information_v6[4]);
+                    string end_ip_v6 = CalculateEndIPv6Address(ip_v6, ip_mask_v6);
 
-                    // 检查此 IPv6 段是否属于目标 AS
                     if (IsIpInTargetAsn(ip_v6))
                     {
                         chnroute_v6 += ip_v6 + "/" + ip_mask_v6 + "\n";
@@ -75,7 +67,6 @@ namespace china_ip_list
                 }
             }
 
-            // 保存文件并输出结果
             File.WriteAllText(save_txt_path + "chnroute.txt", chnroute);
             File.WriteAllText(save_txt_path + "chn_ip.txt", chn_ip);
             Console.WriteLine("本次共获取" + i + "条CN IPv4的记录（目标AS），文件保存于" + save_txt_path + "chn_ip.txt");
@@ -85,10 +76,9 @@ namespace china_ip_list
             Console.WriteLine("本次共获取" + i_ip6 + "条CN IPv6的记录（目标AS），文件保存于" + save_txt_path + "chn_ip_v6.txt");
         }
 
-        // 加载 IP-to-ASN 映射数据
         private static void LoadIpToAsnMap()
         {
-            string ipToAsnUrl = "https://iptoasn.com/data/ip2asn-v4.tsv"; // IPv4 数据（可替换为 v6 数据）
+            string ipToAsnUrl = "https://iptoasn.com/data/ip2asn-v4.tsv";
             string ipToAsnData = GetResponse(ipToAsnUrl);
             if (string.IsNullOrEmpty(ipToAsnData))
             {
@@ -103,26 +93,25 @@ namespace china_ip_list
                 string[] parts = line.Split('\t');
                 if (parts.Length >= 3)
                 {
-                    string startIp = parts[0]; // 起始 IP
-                    string asn = parts[2]; // AS 号
+                    string startIp = parts[0];
+                    string asn = parts[2];
                     if (TargetASNs.Contains(asn))
                     {
-                        ipToAsnMap[startIp] = asn; // 仅存储目标 AS 的映射
+                        ipToAsnMap[startIp] = asn;
                     }
                 }
             }
             Console.WriteLine("已加载 IP-to-ASN 映射，包含 " + ipToAsnMap.Count + " 条目标 AS 记录。");
         }
 
-        // 检查 IP 是否属于目标 AS
         private static bool IsIpInTargetAsn(string ip)
         {
-            uint ipInt = IpToInt(ip); // 将 IP 转换为整数用于比较
+            uint ipInt = IpToInt(ip);
             foreach (var entry in ipToAsnMap)
             {
                 uint startIpInt = IpToInt(entry.Key);
                 string[] parts = entry.Key.Split('.');
-                int mask = 32 - (int)(Math.Log(256) / Math.Log(2)); // 简化为 /24 检查，实际应从数据中获取
+                int mask = 32 - (int)(Math.Log(256) / Math.Log(2)); // 简化为 /24
                 uint range = (uint)(1 << (32 - mask));
                 uint endIpInt = startIpInt + range - 1;
 
@@ -131,7 +120,7 @@ namespace china_ip_list
                     return TargetASNs.Contains(entry.Value);
                 }
             }
-            return false; // 如果没有映射数据，默认不包含
+            return false;
         }
 
         private static string GetResponse(string url)
@@ -208,7 +197,7 @@ namespace china_ip_list
         {
             IPAddress ipAddress = IPAddress.Parse(startIpAddress);
             byte[] addressBytes = ipAddress.GetAddressBytes();
-            int totalBits = IPAddress.IPv6Loopback.AddressFamily == AddressFamily.InterNetworkV6 ? 128 : 32;
+            int totalBits = 128; // 固定为 IPv6 的 128 位，避免 AddressFamily 检查
             int subnetBits = totalBits - networkLength;
             BigInteger startAddress = IpV6ToInt(startIpAddress);
             BigInteger endAddress = startAddress + (BigInteger.One << subnetBits) - BigInteger.One;
