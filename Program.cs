@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -82,31 +82,55 @@ namespace china_ip_list
 
         private static bool LoadIpToAsnMap()
         {
-            string ipToAsnUrl = "https://iptoasn.com/data/ip2asn-v4.tsv";
-            string ipToAsnData = GetResponse(ipToAsnUrl);
-            if (string.IsNullOrEmpty(ipToAsnData))
+            string ipToAsnUrl = "https://github.com/pl-strflt/iptoasn/raw/main/data/ip2asn-v4.tsv.gz";
+            try
             {
-                Console.WriteLine("无法加载 IP-to-ASN 数据，URL: " + ipToAsnUrl);
-                return false;
-            }
-
-            string[] lines = ipToAsnData.Split('\n');
-            foreach (string line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                string[] parts = line.Split('\t');
-                if (parts.Length >= 3)
+                using (var httpClient = new HttpClient())
                 {
-                    string startIp = parts[0];
-                    string asn = parts[2];
-                    if (TargetASNs.Contains(asn))
+                    httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/gzip"));
+                    var response = httpClient.GetAsync(ipToAsnUrl).Result;
+                    if (!response.IsSuccessStatusCode)
                     {
-                        ipToAsnMap[startIp] = asn;
+                        Console.WriteLine($"HTTP 请求返回失败状态码: {response.StatusCode}");
+                        return false;
+                    }
+
+                    using (var stream = response.Content.ReadAsStreamAsync().Result)
+                    using (var gzipStream = new GZipStream(stream, CompressionMode.Decompress))
+                    using (var reader = new StreamReader(gzipStream))
+                    {
+                        string ipToAsnData = reader.ReadToEnd();
+                        if (string.IsNullOrEmpty(ipToAsnData))
+                        {
+                            Console.WriteLine("IP-to-ASN 数据为空，URL: " + ipToAsnUrl);
+                            return false;
+                        }
+
+                        string[] lines = ipToAsnData.Split('\n');
+                        foreach (string line in lines)
+                        {
+                            if (string.IsNullOrWhiteSpace(line)) continue;
+                            string[] parts = line.Split('\t');
+                            if (parts.Length >= 3)
+                            {
+                                string startIp = parts[0];
+                                string asn = parts[2];
+                                if (TargetASNs.Contains(asn))
+                                {
+                                    ipToAsnMap[startIp] = asn;
+                                }
+                            }
+                        }
                     }
                 }
+                Console.WriteLine("已加载 IP-to-ASN 映射，包含 " + ipToAsnMap.Count + " 条目标 AS 记录。");
+                return true;
             }
-            Console.WriteLine("已加载 IP-to-ASN 映射，包含 " + ipToAsnMap.Count + " 条目标 AS 记录。");
-            return true;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"加载 IP-to-ASN 数据失败: {ex.Message}");
+                return false;
+            }
         }
 
         private static bool IsIpInTargetAsn(string ip)
@@ -146,13 +170,14 @@ namespace china_ip_list
                     else
                     {
                         Console.WriteLine($"HTTP 请求返回失败状态码: {response.StatusCode}");
+                        return null;
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"HTTP 请求失败: {ex.Message}");
+                    return null;
                 }
-                return null;
             }
         }
 
