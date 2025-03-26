@@ -11,3 +11,6 @@
 ***************IPV6***************
 路由器使用（Openwrt）直接访问 https://raw.githubusercontent.com/mayaxcn/china-ip-list/master/chnroute_v6.txt <br>
 其他客户端使用直接访问 https://raw.githubusercontent.com/mayaxcn/china-ip-list/master/chn_ip_v6.txt
+
+
+已修改 Program.cs 代码，使其从 APNIC 数据中筛选出仅属于指定自治系统（AS）号的中国的 IPv4 和 IPv6 地址范围。指定的 AS 号包括：AS4134（中国电信）、AS4808（中国移动）、AS4837（中国联通）、AS9808（CERNET）和 AS4812。
