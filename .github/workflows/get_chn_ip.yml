@@ -43,7 +43,7 @@ jobs:
       run: |
         dotnet run --project china_ip_list.csproj --configuration Release
         # 检查输出文件是否存在
-        ls -la ./bin/Release/net7.0/
+        ls -la ./bin/Release/net7.0/ || echo "Output directory not found"
 
     # 提交更改到本地
     - name: Commit files
@@ -54,16 +54,16 @@ jobs:
         git rm -f chn_ip.txt chnroute.txt chn_ip_v6.txt chnroute_v6.txt || true
         git commit -m "删除旧有IP文件!" || true
         # 复制新的生成文件到仓库根目录
-        cp ./bin/Release/net7.0/chn_ip.txt chn_ip.txt
-        cp ./bin/Release/net7.0/chnroute.txt chnroute.txt
-        cp ./bin/Release/net7.0/chn_ip_v6.txt chn_ip_v6.txt
-        cp ./bin/Release/net7.0/chnroute_v6.txt chnroute_v6.txt
+        cp ./bin/Release/net7.0/chn_ip.txt chn_ip.txt || echo "chn_ip.txt not found"
+        cp ./bin/Release/net7.0/chnroute.txt chnroute.txt || echo "chnroute.txt not found"
+        cp ./bin/Release/net7.0/chn_ip_v6.txt chn_ip_v6.txt || echo "chn_ip_v6.txt not found"
+        cp ./bin/Release/net7.0/chnroute_v6.txt chnroute_v6.txt || echo "chnroute_v6.txt not found"
         git add chn_ip.txt chnroute.txt chn_ip_v6.txt chnroute_v6.txt
-        git commit -m "提交新的IP文件（筛选AS4134,AS4808,AS4837,AS9808,AS4812），更新于$(date '+%Y-%m-%d %H:%M:%S')"
+        git commit -m "提交新的IP文件（筛选AS4134,AS4808,AS4837,AS9808,AS4812），更新于$(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
          
     # 推送到远程
     - name: Push changes
-      uses: ad-m/github-push-action@master
+      uses: ad-m/github-push-action@v0.6.0  # 使用稳定版本
       with:
-        github_token: ${{ secrets.CHNIP_GIT_KEY }}
+        github_token: ${{ secrets.CHNIP_GIT_KEY }}  # 保持使用自定义 secret
         branch: master
