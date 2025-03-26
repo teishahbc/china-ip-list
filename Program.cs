@@ -19,11 +19,10 @@ namespace china_ip_list
 
         static void Main(string[] args)
         {
-            // 加载 IP-to-ASN 映射数据
             if (!LoadIpToAsnMap())
             {
                 Console.WriteLine("IP-to-ASN 数据加载失败，程序退出。");
-                Environment.Exit(1); // 非零退出码表示失败
+                Environment.Exit(1);
             }
 
             string apnic_ip = GetResponse("http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest");
@@ -102,9 +101,7 @@ namespace china_ip_list
                     string asn = parts[2];
                     if (TargetASNs.Contains(asn))
                     {
-                        ipToAsnMap[startIp,
-
-] = asn;
+                        ipToAsnMap[startIp] = asn; // 修复语法错误，去掉多余的逗号
                     }
                 }
             }
@@ -114,10 +111,7 @@ namespace china_ip_list
 
         private static bool IsIpInTargetAsn(string ip)
         {
-            // 如果 ipToAsnMap 为空，直接返回 false
             if (ipToAsnMap.Count == 0) return false;
-
-            // 验证 IP 格式并转换为整数
             if (!IsValidIPv4(ip)) return false;
             uint ipInt = IpToInt(ip);
 
@@ -141,7 +135,7 @@ namespace china_ip_list
         {
             using (var httpClient = new HttpClient())
             {
-                httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain")); // 修改为 text/plain 以匹配 TSV 文件
+                httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
                 try
                 {
                     HttpResponseMessage response = httpClient.GetAsync(url).Result;
@@ -177,63 +171,4 @@ namespace china_ip_list
         private static uint IpToInt(string ipStr)
         {
             string[] ip = ipStr.Split('.');
-            uint ipcode = 0xFFFFFF00 | byte.Parse(ip[3]);
-            ipcode = ipcode & 0xFFFF00FF | (uint.Parse(ip[2]) << 0x08);
-            ipcode = ipcode & 0xFF00FFFF | (uint.Parse(ip[1]) << 0x10);
-            ipcode = ipcode & 0x00FFFFFF | (uint.Parse(ip[0]) << 0x18);
-            return ipcode;
-        }
-
-        private static string IntToIp(uint ipcode)
-        {
-            byte addr1 = (byte)((ipcode & 0xFF000000) >> 0x18);
-            byte addr2 = (byte)((ipcode & 0x00FF0000) >> 0x10);
-            byte addr3 = (byte)((ipcode & 0x0000FF00) >> 0x08);
-            byte addr4 = (byte)(ipcode & 0x000000FF);
-            return string.Format("{0}.{1}.{2}.{3}", addr1, addr2, addr3, addr4);
-        }
-
-        private static BigInteger IpV6ToInt(string ipStr)
-        {
-            IPAddress ip = IPAddress.Parse(ipStr);
-            List<byte> ipFormat = ip.GetAddressBytes().ToList();
-            ipFormat.Reverse();
-            ipFormat.Add(0);
-            return new BigInteger(ipFormat.ToArray());
-        }
-
-        private static string DecimalToIpv6(BigInteger decimalValue)
-        {
-            string hexString = decimalValue.ToString("X");
-            string paddedHexString = hexString.PadLeft(32, '0');
-            string ipv6 = "";
-            for (int i = 0; i < paddedHexString.Length; i += 4)
-            {
-                ipv6 += paddedHexString.Substring(i, 4) + ":";
-            }
-            ipv6 = ipv6.TrimEnd(':');
-            return SimplifyIpv6Address(ipv6.ToLower());
-        }
-
-        private static string SimplifyIpv6Address(string ipv6)
-        {
-            string pattern = @"(?<![:\w])(?:0+:?){2,}(?![:\w])|(?:ffff:ffff(:?0+)?)+";
-            string replacement = "::";
-            string simplifiedIpAddress = Regex.Replace(ipv6, pattern, replacement);
-            return simplifiedIpAddress.Replace(":0", ":");
-        }
-
-        public static string CalculateEndIPv6Address(string startIpAddress, int networkLength)
-        {
-            IPAddress ipAddress = IPAddress.Parse(startIpAddress);
-            byte[] addressBytes = ipAddress.GetAddressBytes();
-            int totalBits = 128;
-            int subnetBits = totalBits - networkLength;
-            BigInteger startAddress = IpV6ToInt(startIpAddress);
-            BigInteger endAddress = startAddress + (BigInteger.One << subnetBits) - BigInteger.One;
-            byte[] endAddressBytes = endAddress.ToByteArray();
-            Array.Reverse(endAddressBytes);
-            return new IPAddress(endAddressBytes).ToString();
-        }
-    }
-}
+            uint ipcode = 0xFFFFFF
