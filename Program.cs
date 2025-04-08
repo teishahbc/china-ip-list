@@ -3,12 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Numerics;
 
 namespace china_ip_list
 {
@@ -16,7 +13,7 @@ namespace china_ip_list
     {
         public static string chn_ip = "", chnroute = "", chn_ip_v6 = "", chnroute_v6 = "";
         private static readonly HashSet<string> TargetASNs = new HashSet<string> { "AS4134", "AS4808", "AS4837", "AS9808", "AS4812" };
-        private static Dictionary<string, string> ipToAsnMap = new Dictionary<string, string>();
+        private static Dictionary<uint, (uint EndIp, string Asn)> ipToAsnMap = new Dictionary<uint, (uint, string)>();
 
         static void Main(string[] args)
         {
@@ -75,35 +72,12 @@ namespace china_ip_list
 
                 if (per_ip.Contains("CN|ipv6|"))
                 {
-                    string[] ip_information_v6 = per_ip.Split('|');
-                    if (ip_information_v6.Length < 5)
-                    {
-                        Console.WriteLine($"无效的 IPv6 数据行: {per_ip}");
-                        continue;
-                    }
-
-                    string ip_v6 = ip_information_v6[3];
-                    int ip_mask_v6;
-                    if (!int.TryParse(ip_information_v6[4], out ip_mask_v6))
-                    {
-                        Console.WriteLine($"无法解析 IPv6 掩码: {per_ip}");
-                        continue;
-                    }
-
-                    string end_ip_v6 = CalculateEndIPv6Address(ip_v6, ip_mask_v6);
-
-                    if (IsIpInTargetAsn(ip_v6))
-                    {
-                        chnroute_v6 += ip_v6 + "/" + ip_mask_v6 + "\n";
-                        chn_ip_v6 += ip_v6 + " " + end_ip_v6 + "\n";
-                        i_ip6++;
-                        Console.WriteLine($"匹配目标 ASN (IPv6): {ip_v6} - {end_ip_v6}");
-                    }
+                    i_ip6++; // 统计 IPv6 条目数
                 }
             }
 
             Console.WriteLine($"总共处理 {total_ipv4_entries} 条 CN IPv4 记录，匹配目标 ASN 的有 {i} 条");
-            Console.WriteLine($"总共处理 CN IPv6 记录，匹配目标 ASN 的有 {i_ip6} 条");
+            Console.WriteLine($"总共处理 {i_ip6} 条 CN IPv6 记录，匹配目标 ASN 的有 0 条（暂不支持 IPv6 ASN）");
 
             File.WriteAllText(save_txt_path + "chnroute.txt", chnroute);
             File.WriteAllText(save_txt_path + "chn_ip.txt", chn_ip);
@@ -111,7 +85,7 @@ namespace china_ip_list
 
             File.WriteAllText(save_txt_path + "chnroute_v6.txt", chnroute_v6);
             File.WriteAllText(save_txt_path + "chn_ip_v6.txt", chn_ip_v6);
-            Console.WriteLine("本次共获取" + i_ip6 + "条CN IPv6的记录（目标AS），文件保存于" + save_txt_path + "chn_ip_v6.txt");
+            Console.WriteLine("本次共获取0条CN IPv6的记录（目标AS），文件保存于" + save_txt_path + "chn_ip_v6.txt");
         }
 
         private static bool LoadIpToAsnMap()
@@ -125,7 +99,7 @@ namespace china_ip_list
                     var response = httpClient.GetAsync(ipToAsnUrl).Result;
                     if (!response.IsSuccessStatusCode)
                     {
-                        Console.WriteLine($"HTTP 请求返回失败状态码: {response.StatusCode}");
+                        Console.WriteLine($"HTTP 请求失败: {response.StatusCode}");
                         return false;
                     }
 
@@ -140,30 +114,49 @@ namespace china_ip_list
                             return false;
                         }
 
+                        Console.WriteLine($"成功下载 IP-to-ASN 数据，大小: {ipToAsnData.Length} 字符");
+
                         string[] lines = ipToAsnData.Split('\n');
+                        Console.WriteLine($"总计 {lines.Length} 行数据，开始解析...");
+                        int validLines = 0;
+
                         foreach (string line in lines)
                         {
                             if (string.IsNullOrWhiteSpace(line)) continue;
                             string[] parts = line.Split('\t');
-                            if (parts.Length >= 3)
+                            if (parts.Length < 3)
                             {
-                                string startIp = parts[0];
-                                string asn = parts[2];
-                                if (TargetASNs.Contains(asn))
-                                {
-                                    ipToAsnMap[startIp] = asn;
-                                    Console.WriteLine($"加载目标 ASN: {startIp} -> {asn}");
-                                }
+                                Console.WriteLine($"无效行: {line}");
+                                continue;
+                            }
+
+                            string startIp = parts[0];
+                            string endIp = parts[1];
+                            string asn = parts[2];
+                            validLines++;
+
+                            if (TargetASNs.Contains(asn))
+                            {
+                                uint startIpInt = IpToInt(startIp);
+                                uint endIpInt = IpToInt(endIp);
+                                ipToAsnMap[startIpInt] = (endIpInt, asn);
+                                Console.WriteLine($"加载目标 ASN: {startIp} - {endIp} -> {asn}");
                             }
                         }
+
+                        Console.WriteLine($"解析完成，有效行数: {validLines}，匹配目标 ASN 的记录数: {ipToAsnMap.Count}");
                     }
                 }
-                Console.WriteLine("已加载 IP-to-ASN 映射，包含 " + ipToAsnMap.Count + " 条目标 AS 记录。");
+                if (ipToAsnMap.Count == 0)
+                {
+                    Console.WriteLine("警告: 未找到任何匹配目标 ASN 的记录，请检查数据源或目标 ASN 配置。");
+                    return true; // 不退出程序，继续运行以观察后续行为
+                }
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"加载 IP-to-ASN 数据失败: {ex.Message}");
+                Console.WriteLine($"加载 IP-to-ASN 数据异常: {ex.Message}");
                 return false;
             }
         }
@@ -177,24 +170,17 @@ namespace china_ip_list
             }
             if (!IsValidIPv4(ip))
             {
-                Console.WriteLine($"无效的 IPv4 地址: {ip}");
-                return false;
+                return false; // IPv6 不支持，直接返回 false
             }
 
             uint ipInt = IpToInt(ip);
             foreach (var entry in ipToAsnMap)
             {
-                uint startIpInt = IpToInt(entry.Key);
-                string[] parts = entry.Key.Split('.');
-                int mask = 32 - (int)(Math.Log(256) / Math.Log(2)); // 简化为 /24
-                uint range = (uint)(1 << (32 - mask));
-                uint endIpInt = startIpInt + range - 1;
-
+                uint startIpInt = entry.Key;
+                uint endIpInt = entry.Value.EndIp;
                 if (ipInt >= startIpInt && ipInt <= endIpInt)
                 {
-                    bool isTarget = TargetASNs.Contains(entry.Value);
-                    Console.WriteLine($"检查 IP {ip} 在范围 {entry.Key} ({startIpInt}-{endIpInt})，ASN: {entry.Value}，结果: {isTarget}");
-                    return isTarget;
+                    return true; // 找到匹配，不打印过多日志
                 }
             }
             return false;
@@ -207,20 +193,17 @@ namespace china_ip_list
                 httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
                 try
                 {
-                    HttpResponseMessage response = httpClient.GetAsync(url).Result;
+                    var response = httpClient.GetAsync(url).Result;
                     if (response.IsSuccessStatusCode)
                     {
                         return response.Content.ReadAsStringAsync().Result;
                     }
-                    else
-                    {
-                        Console.WriteLine($"HTTP 请求返回失败状态码: {response.StatusCode}");
-                        return null;
-                    }
+                    Console.WriteLine($"HTTP 请求失败: {response.StatusCode}");
+                    return null;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"HTTP 请求失败: {ex.Message}");
+                    Console.WriteLine($"HTTP 请求异常: {ex.Message}");
                     return null;
                 }
             }
@@ -255,49 +238,6 @@ namespace china_ip_list
             byte addr3 = (byte)((ipcode & 0x0000FF00) >> 0x08);
             byte addr4 = (byte)(ipcode & 0x000000FF);
             return string.Format("{0}.{1}.{2}.{3}", addr1, addr2, addr3, addr4);
-        }
-
-        private static BigInteger IpV6ToInt(string ipStr)
-        {
-            IPAddress ip = IPAddress.Parse(ipStr);
-            List<byte> ipFormat = ip.GetAddressBytes().ToList();
-            ipFormat.Reverse();
-            ipFormat.Add(0);
-            return new BigInteger(ipFormat.ToArray());
-        }
-
-        private static string DecimalToIpv6(BigInteger decimalValue)
-        {
-            string hexString = decimalValue.ToString("X");
-            string paddedHexString = hexString.PadLeft(32, '0');
-            string ipv6 = "";
-            for (int i = 0; i < paddedHexString.Length; i += 4)
-            {
-                ipv6 += paddedHexString.Substring(i, 4) + ":";
-            }
-            ipv6 = ipv6.TrimEnd(':');
-            return SimplifyIpv6Address(ipv6.ToLower());
-        }
-
-        private static string SimplifyIpv6Address(string ipv6)
-        {
-            string pattern = @"(?<![:\w])(?:0+:?){2,}(?![:\w])|(?:ffff:ffff(:?0+)?)+";
-            string replacement = "::";
-            string simplifiedIpAddress = Regex.Replace(ipv6, pattern, replacement);
-            return simplifiedIpAddress.Replace(":0", ":");
-        }
-
-        public static string CalculateEndIPv6Address(string startIpAddress, int networkLength)
-        {
-            IPAddress ipAddress = IPAddress.Parse(startIpAddress);
-            byte[] addressBytes = ipAddress.GetAddressBytes();
-            int totalBits = 128;
-            int subnetBits = totalBits - networkLength;
-            BigInteger startAddress = IpV6ToInt(startIpAddress);
-            BigInteger endAddress = startAddress + (BigInteger.One << subnetBits) - BigInteger.One;
-            byte[] endAddressBytes = endAddress.ToByteArray();
-            Array.Reverse(endAddressBytes);
-            return new IPAddress(endAddressBytes).ToString();
         }
     }
 }
