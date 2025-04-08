@@ -1,59 +1,48 @@
 name: chn-ip-task
 
 on:
-  push: # push触发
+  push:
     branches: [ master ]
-  workflow_dispatch: # 手动触发
-  schedule: # 计划任务触发
-    - cron: '0 */8 * * *' # 每8小时运行一次，UTC时间
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */8 * * *'
 
 jobs:
   run-get-ip-list:
     runs-on: ubuntu-latest
     
     steps:
-    # 检出代码
     - name: Checkout
       uses: actions/checkout@v3
       
-    # 设置服务器时区为东八区 
     - name: Set time zone
       run: sudo timedatectl set-timezone 'Asia/Shanghai'
       
-    # 设置 .NET 环境
     - name: Setup .NET
       uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 7.0.x  # 使用 .NET 7.0 的最新补丁版本
+        dotnet-version: 7.0.x
 
-    # 设置全球化不变模式
     - name: Set globalization invariant mode
       run: echo "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1" >> $GITHUB_ENV
 
-    # 恢复依赖
     - name: Install dependencies
       run: dotnet restore
       
-    # 构建应用（使用 Release 配置）
     - name: Build
       run: dotnet build --configuration Release --no-restore
        
-    # 运行应用（指定输出目录并确保文件生成）
     - name: Run
       run: |
         dotnet run --project china_ip_list.csproj --configuration Release
-        # 检查输出文件是否存在
         ls -la ./bin/Release/net7.0/ || echo "Output directory not found"
 
-    # 提交更改到本地
     - name: Commit files
       run: |
         git config --local user.email "mayax@github.com"
         git config --local user.name "mayaxcn"
-        # 删除旧文件（如果存在）
         git rm -f chn_ip.txt chnroute.txt chn_ip_v6.txt chnroute_v6.txt || true
         git commit -m "删除旧有IP文件!" || true
-        # 复制新的生成文件到仓库根目录
         cp ./bin/Release/net7.0/chn_ip.txt chn_ip.txt || echo "chn_ip.txt not found"
         cp ./bin/Release/net7.0/chnroute.txt chnroute.txt || echo "chnroute.txt not found"
         cp ./bin/Release/net7.0/chn_ip_v6.txt chn_ip_v6.txt || echo "chn_ip_v6.txt not found"
@@ -61,9 +50,8 @@ jobs:
         git add chn_ip.txt chnroute.txt chn_ip_v6.txt chnroute_v6.txt
         git commit -m "提交新的IP文件（筛选AS4134,AS4808,AS4837,AS9808,AS4812），更新于$(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
          
-    # 推送到远程
     - name: Push changes
-      uses: ad-m/github-push-action@v0.6.0  # 使用稳定版本
+      uses: ad-m/github-push-action@v0.6.0
       with:
-        github_token: ${{ secrets.CHNIP_GIT_KEY }}  # 保持使用自定义 secret
+        github_token: ${{ secrets.GITHUB_TOKEN }}
         branch: master
