@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Net; // 添加此命名空间以支持 IPAddress
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -33,18 +33,34 @@ namespace china_ip_list
                 Environment.Exit(1);
             }
 
+            Console.WriteLine("成功获取 APNIC 数据，开始处理...");
+
             string[] ip_list = apnic_ip.Split(new string[] { "\n" }, StringSplitOptions.None);
             int i = 0;
             int i_ip6 = 0;
             string save_txt_path = AppContext.BaseDirectory;
 
+            int total_ipv4_entries = 0;
             foreach (string per_ip in ip_list)
             {
                 if (per_ip.Contains("CN|ipv4|"))
                 {
+                    total_ipv4_entries++;
                     string[] ip_information = per_ip.Split('|');
+                    if (ip_information.Length < 5)
+                    {
+                        Console.WriteLine($"无效的 IPv4 数据行: {per_ip}");
+                        continue;
+                    }
+
                     string ip = ip_information[3];
-                    int ip_count = Convert.ToInt32(ip_information[4]);
+                    int ip_count;
+                    if (!int.TryParse(ip_information[4], out ip_count))
+                    {
+                        Console.WriteLine($"无法解析 IP 计数: {per_ip}");
+                        continue;
+                    }
+
                     string ip_mask = Convert.ToString(32 - (Math.Log(ip_count) / Math.Log(2)));
                     string end_ip = IntToIp(IpToInt(ip) + (uint)ip_count - 1);
 
@@ -53,14 +69,27 @@ namespace china_ip_list
                         chnroute += ip + "/" + ip_mask + "\n";
                         chn_ip += ip + " " + end_ip + "\n";
                         i++;
+                        Console.WriteLine($"匹配目标 ASN: {ip} - {end_ip}");
                     }
                 }
 
                 if (per_ip.Contains("CN|ipv6|"))
                 {
                     string[] ip_information_v6 = per_ip.Split('|');
+                    if (ip_information_v6.Length < 5)
+                    {
+                        Console.WriteLine($"无效的 IPv6 数据行: {per_ip}");
+                        continue;
+                    }
+
                     string ip_v6 = ip_information_v6[3];
-                    int ip_mask_v6 = Convert.ToInt32(ip_information_v6[4]);
+                    int ip_mask_v6;
+                    if (!int.TryParse(ip_information_v6[4], out ip_mask_v6))
+                    {
+                        Console.WriteLine($"无法解析 IPv6 掩码: {per_ip}");
+                        continue;
+                    }
+
                     string end_ip_v6 = CalculateEndIPv6Address(ip_v6, ip_mask_v6);
 
                     if (IsIpInTargetAsn(ip_v6))
@@ -68,9 +97,13 @@ namespace china_ip_list
                         chnroute_v6 += ip_v6 + "/" + ip_mask_v6 + "\n";
                         chn_ip_v6 += ip_v6 + " " + end_ip_v6 + "\n";
                         i_ip6++;
+                        Console.WriteLine($"匹配目标 ASN (IPv6): {ip_v6} - {end_ip_v6}");
                     }
                 }
             }
+
+            Console.WriteLine($"总共处理 {total_ipv4_entries} 条 CN IPv4 记录，匹配目标 ASN 的有 {i} 条");
+            Console.WriteLine($"总共处理 CN IPv6 记录，匹配目标 ASN 的有 {i_ip6} 条");
 
             File.WriteAllText(save_txt_path + "chnroute.txt", chnroute);
             File.WriteAllText(save_txt_path + "chn_ip.txt", chn_ip);
@@ -119,6 +152,7 @@ namespace china_ip_list
                                 if (TargetASNs.Contains(asn))
                                 {
                                     ipToAsnMap[startIp] = asn;
+                                    Console.WriteLine($"加载目标 ASN: {startIp} -> {asn}");
                                 }
                             }
                         }
@@ -136,10 +170,18 @@ namespace china_ip_list
 
         private static bool IsIpInTargetAsn(string ip)
         {
-            if (ipToAsnMap.Count == 0) return false;
-            if (!IsValidIPv4(ip)) return false;
-            uint ipInt = IpToInt(ip);
+            if (ipToAsnMap.Count == 0)
+            {
+                Console.WriteLine("IP-to-ASN 映射为空，无法筛选");
+                return false;
+            }
+            if (!IsValidIPv4(ip))
+            {
+                Console.WriteLine($"无效的 IPv4 地址: {ip}");
+                return false;
+            }
 
+            uint ipInt = IpToInt(ip);
             foreach (var entry in ipToAsnMap)
             {
                 uint startIpInt = IpToInt(entry.Key);
@@ -150,7 +192,9 @@ namespace china_ip_list
 
                 if (ipInt >= startIpInt && ipInt <= endIpInt)
                 {
-                    return TargetASNs.Contains(entry.Value);
+                    bool isTarget = TargetASNs.Contains(entry.Value);
+                    Console.WriteLine($"检查 IP {ip} 在范围 {entry.Key} ({startIpInt}-{endIpInt})，ASN: {entry.Value}，结果: {isTarget}");
+                    return isTarget;
                 }
             }
             return false;
